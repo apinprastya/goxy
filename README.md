@@ -1,5 +1,5 @@
 # goxy
-Simple golang reverse proxy with virtual host. Replacement for apache or nginx reverse proxy with very simple config and setup. Certbot included here so you don't need to worry about certificate.
+Simple golang reverse proxy with virtual host. Replacement for apache or nginx reverse proxy with very simple config and setup. Let's Encrypt included here so you don't need to worry about certificate.
 
 ### Compile
 Checkout the repo and run this command on terminal / command line :

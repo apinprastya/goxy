@@ -5,7 +5,7 @@ Simple golang reverse proxy with virtual host. Replacement for apache or nginx r
 Checkout the repo and run this command on terminal / command line :
 make sure you Golang version minimum is 1.14
 ```bash
-$ go build -o goxy main.go`
+$ go build -o goxy main.go
 ```
 
 ### Config

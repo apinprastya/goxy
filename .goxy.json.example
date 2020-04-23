@@ -1,0 +1,17 @@
+{
+    "cache": "/root/cert",
+    "vhosts": [
+        {
+            "domain": [
+                "coba1.lekapin.com"
+            ],
+            "target": "http://127.0.0.1:8110"
+        },
+        {
+            "domain": [
+                "test2.lekapin.com"
+            ],
+            "target": "http://127.0.0.1:8100"
+        }
+    ]
+}

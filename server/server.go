@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"html/template"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -20,6 +19,8 @@ type serverConfig struct {
 	Domain []string
 	Target *url.URL
 }
+
+var version = "0.0.1"
 
 var serverConfigs = []*serverConfig{}
 var allVHosts = []string{}
@@ -47,14 +48,12 @@ func StartServer() {
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if t, err := template.ParseFiles("template/home.html"); err == nil {
-			t.Execute(w, nil)
-		}
+		defaultHTTPResponse(w, req)
 	})
 	go checkSignal()
 	go httpRedirector()
-	log.Println("Start GOXY...")
+	log.Println("Start GOXY", version)
+	log.Println("List of virtual hosts :", allVHosts)
 	if err := httpsServer.ListenAndServeTLS("", ""); err != nil {
 		if err != http.ErrServerClosed {
 			panic(err)
@@ -66,10 +65,7 @@ func httpRedirector() {
 	httpServer = &http.Server{Addr: ":80"}
 	httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if !containVHost(req.Host) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			if t, err := template.ParseFiles("template/home.html"); err == nil {
-				t.Execute(w, nil)
-			}
+			defaultHTTPResponse(w, req)
 		} else {
 			http.Redirect(w, req, "https://"+req.Host+req.URL.String(), http.StatusMovedPermanently)
 		}

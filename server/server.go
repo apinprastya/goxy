@@ -62,16 +62,23 @@ func httpRedirector() {
 	httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if !containVHost(req.Host) {
 			if req.URL.Path == "/_addnewdomain" && req.Method == "PUT" {
-				jdata := struct {
-					Domain string `json:"domain"`
-					Target string `json:"target"`
-				}{}
-				if ba, err := ioutil.ReadAll(req.Body); err == nil {
-					if err := json.Unmarshal(ba, &jdata); err == nil {
-						insertNewDomain(jdata.Domain, jdata.Target)
-						w.Header().Set("Content-Type", "application/json")
-						w.WriteHeader(200)
-						w.Write([]byte("{\"ok\":true}"))
+				k := req.Header.Get("key")
+				if k == viper.GetString("GOXYKEY") {
+					jdata := struct {
+						Domain string `json:"domain"`
+						Target string `json:"target"`
+					}{}
+					if ba, err := ioutil.ReadAll(req.Body); err == nil {
+						if err := json.Unmarshal(ba, &jdata); err == nil {
+							insertNewDomain(jdata.Domain, jdata.Target)
+							w.Header().Set("Content-Type", "application/json")
+							w.WriteHeader(200)
+							w.Write([]byte("{\"ok\":true}"))
+						} else {
+							w.Header().Set("Content-Type", "application/json")
+							w.WriteHeader(400)
+							w.Write([]byte("{\"ok\":false}"))
+						}
 					} else {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(400)
@@ -112,6 +119,7 @@ func readConfig() {
 	viper.AddConfigPath(appPath)
 	viper.SetDefault("cache", "/root/cert")
 	viper.SetDefault("email", "no-reply@gmail.com")
+	viper.SetDefault("key", "GOXYKEY")
 	serverConfigMaps = make(map[string]*httputil.ReverseProxy)
 	if err := viper.ReadInConfig(); err != nil {
 		panic(err)

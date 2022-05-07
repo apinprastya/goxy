@@ -5,7 +5,11 @@
             "domain": [
                 "coba1.lekapin.com"
             ],
-            "target": "http://127.0.0.1:8110"
+            "target": "http://127.0.0.1:8110",
+            "basicAuth": {
+                "username": "username",
+                "password": "password"
+            }
         },
         {
             "domain": [

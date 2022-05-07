@@ -2,12 +2,17 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"syscall"
 
@@ -15,34 +20,52 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
-type serverConfig struct {
-	Domain []string
-	Target *url.URL
-}
+var version = "1.0.0"
 
-var version = "0.0.1"
-
-var serverConfigs = []*serverConfig{}
-var allVHosts = []string{}
+var config *Config
 var httpServer *http.Server
 var httpsServer *http.Server
 
 //StartServer Start the server
 func StartServer() {
-	readConfig()
+	config = readConfig()
+	allVHosts := config.AllVHost()
 	m := &autocert.Manager{
-		Cache:      autocert.DirCache(viper.GetString("cache")),
+		Cache:      autocert.DirCache(config.Cache),
 		Prompt:     autocert.AcceptTOS,
 		HostPolicy: autocert.HostWhitelist(allVHosts...),
 	}
 
 	httpsServer = &http.Server{Addr: ":443", TLSConfig: m.TLSConfig()}
 
-	for _, vhost := range serverConfigs {
-		prox := httputil.NewSingleHostReverseProxy(vhost.Target)
+	for _, vhost := range config.VHosts {
+		url, err := url.Parse(vhost.Target)
+		if err != nil {
+			fmt.Printf("WARNING! domain: %s failed parse URL: %s\n", vhost.Target, err)
+			continue
+		}
+		prox := httputil.NewSingleHostReverseProxy(url)
 		for _, domain := range vhost.Domain {
 			http.HandleFunc(domain+"/", func(w http.ResponseWriter, req *http.Request) {
-				prox.ServeHTTP(w, req)
+				if vhost.BasicAuth != nil {
+					username, password, ok := req.BasicAuth()
+					if ok {
+						usernameHash := sha256.Sum256([]byte(username))
+						passwordHash := sha256.Sum256([]byte(password))
+						expectedUsernameHash := sha256.Sum256([]byte(vhost.BasicAuth.Username))
+						expectedPasswordHash := sha256.Sum256([]byte(vhost.BasicAuth.Password))
+						usernameMatch := (subtle.ConstantTimeCompare(usernameHash[:], expectedUsernameHash[:]) == 1)
+						passwordMatch := (subtle.ConstantTimeCompare(passwordHash[:], expectedPasswordHash[:]) == 1)
+						if usernameMatch && passwordMatch {
+							prox.ServeHTTP(w, req)
+						}
+						return
+					}
+					w.Header().Set("WWW-Authenticate", `Basic realm="restricted", charset="UTF-8"`)
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				} else {
+					prox.ServeHTTP(w, req)
+				}
 			})
 		}
 	}
@@ -51,7 +74,7 @@ func StartServer() {
 		defaultHTTPResponse(w, req)
 	})
 	go checkSignal()
-	go httpRedirector()
+	go httpRedirector(allVHosts)
 	log.Println("Start GOXY", version)
 	log.Println("List of virtual hosts :", allVHosts)
 	if err := httpsServer.ListenAndServeTLS("", ""); err != nil {
@@ -61,10 +84,10 @@ func StartServer() {
 	}
 }
 
-func httpRedirector() {
+func httpRedirector(allVHosts []string) {
 	httpServer = &http.Server{Addr: ":80"}
 	httpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if !containVHost(req.Host) {
+		if !containVHost(allVHosts, req.Host) {
 			defaultHTTPResponse(w, req)
 		} else {
 			http.Redirect(w, req, "https://"+req.Host+req.URL.String(), http.StatusMovedPermanently)
@@ -77,7 +100,7 @@ func httpRedirector() {
 	}
 }
 
-func containVHost(host string) bool {
+func containVHost(allVHosts []string, host string) bool {
 	for i := range allVHosts {
 		if allVHosts[i] == host {
 			return true
@@ -86,7 +109,7 @@ func containVHost(host string) bool {
 	return false
 }
 
-func readConfig() {
+func readConfig() *Config {
 	appPath, _ := filepath.Abs(filepath.Dir(os.Args[0]))
 	viper.SetConfigName(".goxy")
 	viper.AddConfigPath(appPath)
@@ -94,18 +117,17 @@ func readConfig() {
 	if err := viper.ReadInConfig(); err != nil {
 		panic(err)
 	}
-	vhosts := viper.Get("vhosts").([]interface{})
-	for _, v := range vhosts {
-		vh := v.(map[string]interface{})
-		domInterface := vh["domain"].([]interface{})
-		doms := []string{}
-		for _, di := range domInterface {
-			doms = append(doms, di.(string))
-		}
-		allVHosts = append(allVHosts, doms...)
-		target, _ := url.Parse(vh["target"].(string))
-		serverConfigs = append(serverConfigs, &serverConfig{Domain: doms, Target: target})
+	configJson := path.Join(appPath, ".goxy.json")
+	jsonByte, err := os.ReadFile(configJson)
+	if err != nil {
+		panic(err)
 	}
+	config := &Config{}
+	err = json.Unmarshal(jsonByte, config)
+	if err != nil {
+		panic(err)
+	}
+	return config
 }
 
 func checkSignal() {

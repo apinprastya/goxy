@@ -48,12 +48,13 @@ func StartServer() {
 
 	for _, vhost := range serverConfigs {
 		prox := httputil.NewSingleHostReverseProxy(vhost.Target)
+		auth := vhost.Auth
 		for _, domain := range vhost.Domain {
 			http.HandleFunc(domain+"/", func(w http.ResponseWriter, req *http.Request) {
-				if vhost.Auth != nil {
+				if auth != nil {
 					username, password, ok := req.BasicAuth()
-					if !ok || (username != vhost.Auth.Username && password != vhost.Auth.Password) {
-						w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Basic realm="%s"`, vhost.Auth.Realm))
+					if !ok || (username != auth.Username && password != auth.Password) {
+						w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Basic realm="%s"`, auth.Realm))
 						http.Error(w, "Unauthorized", http.StatusUnauthorized)
 						return
 					}

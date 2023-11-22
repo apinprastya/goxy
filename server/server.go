@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -15,9 +16,16 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
+type basicAuth struct {
+	Realm    string
+	Username string
+	Password string
+}
+
 type serverConfig struct {
 	Domain []string
 	Target *url.URL
+	Auth   *basicAuth
 }
 
 var version = "0.0.1"
@@ -27,7 +35,7 @@ var allVHosts = []string{}
 var httpServer *http.Server
 var httpsServer *http.Server
 
-//StartServer Start the server
+// StartServer Start the server
 func StartServer() {
 	readConfig()
 	m := &autocert.Manager{
@@ -42,6 +50,14 @@ func StartServer() {
 		prox := httputil.NewSingleHostReverseProxy(vhost.Target)
 		for _, domain := range vhost.Domain {
 			http.HandleFunc(domain+"/", func(w http.ResponseWriter, req *http.Request) {
+				if vhost.Auth != nil {
+					username, password, ok := req.BasicAuth()
+					if !ok || (username != vhost.Auth.Username && password != vhost.Auth.Password) {
+						w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Basic realm="%s"`, vhost.Auth.Realm))
+						http.Error(w, "Unauthorized", http.StatusUnauthorized)
+						return
+					}
+				}
 				prox.ServeHTTP(w, req)
 			})
 		}
@@ -104,7 +120,22 @@ func readConfig() {
 		}
 		allVHosts = append(allVHosts, doms...)
 		target, _ := url.Parse(vh["target"].(string))
-		serverConfigs = append(serverConfigs, &serverConfig{Domain: doms, Target: target})
+
+		//auth
+		var basic *basicAuth
+		authInterface := vh["auth"]
+		if authInterface != nil {
+			auth := authInterface.(map[string]any)
+			username := auth["username"].(string)
+			password := auth["password"].(string)
+			realm := auth["realm"].(string)
+			basic = &basicAuth{
+				Username: username,
+				Password: password,
+				Realm:    realm,
+			}
+		}
+		serverConfigs = append(serverConfigs, &serverConfig{Domain: doms, Target: target, Auth: basic})
 	}
 }
 

@@ -11,7 +11,12 @@
             "domain": [
                 "test2.lekapin.com"
             ],
-            "target": "http://127.0.0.1:8100"
+            "target": "http://127.0.0.1:8100",
+            "auth": {
+                "username": "yourusername",
+                "password": "yourpassword",
+                "realm": "yourrealm"
+            }
         }
     ]
 }
